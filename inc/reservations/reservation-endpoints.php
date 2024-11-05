@@ -2,19 +2,20 @@
 
 
 add_action( 'rest_api_init',function () {
+  mapi_write_log('API loaded');
 
     register_rest_route('makesantafe/v1', '/login', [
-      'methods' => WP_REST_Server::ALLMETHODS,
+      'methods' => WP_REST_Server::READABLE,
       'callback' => 'makesantafe_login',
       'permission_callback' => '__return_true',
     ]);
     register_rest_route('makesantafe/v1', '/userprofile', [
-      'methods' => WP_REST_Server::ALLMETHODS,
+      'methods' => WP_REST_Server::READABLE,
       'callback' => 'makesantafe_user_profile',
       'permission_callback' => '__return_true',
     ]);
     register_rest_route('makesantafe/v1', '/userprofile_update', [
-      'methods' => WP_REST_Server::ALLMETHODS,
+      'methods' => WP_REST_Server::EDITABLE,
       'callback' => 'makesantafe_update_profile',
       'permission_callback' => '__return_true',
       'args' => array(
@@ -25,7 +26,18 @@ add_action( 'rest_api_init',function () {
         ),
       )
     ]);
-
+    register_rest_route('makesantafe/v1', '/get_reservations', [
+      'methods' => WP_REST_Server::READABLE,
+      'callback' => 'makesantafe_get_reservations',
+      'permission_callback' => '__return_true',
+      'args' => array(
+        'userid' => array(
+          'description' => esc_html__( 'The user ID to get bookings for', 'mindshare' ),
+          'type'        => 'Int',
+          'required'    => true,
+        ),
+      )
+    ]);
     register_rest_route('makesantafe/v1', '/create_reservation', [
       'methods' => WP_REST_Server::EDITABLE,
       'callback' => 'makesantafe_create_reservation',
@@ -50,8 +62,18 @@ add_action( 'rest_api_init',function () {
     ]);
 
 
+
+
 });
 
+
+
+function makesantafe_get_reservations($request) {
+  $params = $request->get_params();
+  $userID = $params['userid'];
+  $return = make_get_user_bookings($userID);
+  wp_send_json($return);
+}
 
 
 /*
@@ -62,7 +84,7 @@ The intent is that the user key is stored locally on the user's device and is us
 The user_key should be refreshed on a regular basis.
 
 Request must include:
-clientID: string, must match clientID in API
+CLIENT_ID: string, must match CLIENT_ID in API
 email: string, must be a valid email address
 password: string, user supplied password
 
@@ -70,15 +92,19 @@ Return: array [(bool) success, (string) message];
 */
 function makesantafe_login($request) {
   $params = $request->get_params();
-  $email = $params['email'];
-  $password = $params['password'];
-  $clientID = $params['clientID'];
+  $email = (isset($params['email']) ? $params['email'] : false);
+  $password = (isset($params['password']) ? $params['password'] : false);
+  $CLIENT_ID = (isset($params['CLIENT_ID']) ? $params['CLIENT_ID'] : false);
+
+  if(!$email || !$password || !$CLIENT_ID) {
+    wp_send_json_error( 'email, password and CLIENT_ID are required!' );
+  }
+
   if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     wp_send_json_error( 'Invalid email address' );
   }
-
   $return = false;
-  if(clientID === $clientID) :
+  if(CLIENT_ID === $CLIENT_ID) :
     $user = get_user_by( 'email', $email );
     if(!$user) :
       $return = array(
@@ -114,11 +140,11 @@ function makesantafe_login($request) {
 
 
 /*
-Gets the current user profile information by $userkey. The intent of this function is to return basic user information and user meta data. This function is intended to be used for a user profile page.
+Gets the current user profile information by $user_key. The intent of this function is to return basic user information and user meta data. This function is intended to be used for a user profile page.
 
 Request must include:
-clientID: string, must match clientID in API
-userKey: string, user meta established when account was created or when user logged in
+CLIENT_ID: string, must match CLIENT_ID in API
+user_key: string, user meta established when account was created or when user logged in
 
 Return (success): array [(int) userID, (bool) success, (array) user_meta];
 Return (failure): array [(bool) success, (string) message];
@@ -126,27 +152,27 @@ user_meta: []
 */
 function makesantafe_user_profile($request) {
   $params = $request->get_params();
-  $clientID = (isset($params['clientID']) ? $params['clientID'] : false);
-  $userKey = (isset($params['userKey']) ? $params['userKey'] : false);
-  if(clientID === $clientID) :
+  $CLIENT_ID = (isset($params['CLIENT_ID']) ? $params['CLIENT_ID'] : false);
+  $user_key = (isset($params['user_key']) ? $params['user_key'] : false);
+  if(CLIENT_ID === $CLIENT_ID) :
     $return = false;
     $users = get_users(array(
       'meta_key' => 'user_key',
-      'meta_value' => $userKey,
+      'meta_value' => $user_key,
       'meta_compare' => '=',
     ));
     if(count($users) > 0) :
-      if($users[0] && $userKey) :
+      if($users[0] && $user_key) :
         // $user_id = $users[0]->data->ID;
         $return = array(
           'userID' => $users[0]->data->ID,
           'success' => true,
           'name' => $users[0]->data->display_name,
           'user_info' => array(),
-          'active_memberships' => array(),
-          'billing_address' => array(),
-          'public_profile' => array(),
-          'reservations' => array(),
+          'active_memberships' => make_get_user_memberships($users[0]->data->ID),
+          'billing_address' => make_get_user_billing_address($users[0]->data->ID),
+          'public_profile' => make_get_user_meta($users[0]->data->ID),
+          'reservations' => make_get_user_bookings($users[0]->data->ID),
         );
       else :
         $return = array(
@@ -166,11 +192,11 @@ function makesantafe_user_profile($request) {
 
 
 /*
-Updates the current user profile information by $userkey. The intent of this function is to update user meta data. This function is intended to be used to edit basic user information. 
+Updates the current user profile information by $user_key. The intent of this function is to update user meta data. This function is intended to be used to edit basic user information. 
 
 Request must include:
-clientID: string, must match clientID in API
-userKey: string, user meta established when account was created or when user logged in
+CLIENT_ID: string, must match CLIENT_ID in API
+user_key: string, user meta established when account was created or when user logged in
 
 Return (success): array [changed_options];
 Return (failure): array [(bool) success, (string) message];
@@ -178,18 +204,18 @@ user_meta: []
 */
 function makesantafe_update_profile($request) {
   $params = $request->get_params();
-  if(clientID === $params['clientID']) :
+  if(CLIENT_ID === $params['CLIENT_ID']) :
     $return = null;
-    $userKey = $params['userKey'];
+    $user_key = $params['user_key'];
     $options = $params['options'];
     // mapi_write_log($options);
     $users = get_users(array(
       'meta_key' => 'user_key',
-      'meta_value' => $userKey,
+      'meta_value' => $user_key,
       'meta_compare' => '=',
     ));
     if(count($users) > 0) :
-      if($users[0] && $userKey) :
+      if($users[0] && $user_key) :
         $return = array();
         $available_options = array(
             //TODO: Add available options
@@ -231,20 +257,20 @@ function makesantafe_update_profile($request) {
 
 function makesantafe_create_reservation($request) {
   $params = $request->get_params();
-  if(clientID === $params['clientID']) :
+  if(CLIENT_ID === $params['CLIENT_ID']) :
     $return = null;
-    $userKey = $params['userKey'];
+    $user_key = $params['user_key'];
     $product = $params['product'];
     $start_date_time = $params['start_date_time'];
     $end_date_time = $params['end_date_time'];
     // mapi_write_log($options);
     $users = get_users(array(
       'meta_key' => 'user_key',
-      'meta_value' => $userKey,
+      'meta_value' => $user_key,
       'meta_compare' => '=',
     ));
     if(count($users) > 0) :
-      if($users[0] && $userKey) :
+      if($users[0] && $user_key) :
         $booking_data = [
           'product_id'   => $product,
           'start_date'   => strtotime($start_date_time),

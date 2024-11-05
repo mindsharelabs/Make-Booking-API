@@ -1,3 +1,2 @@
 <?php
-
-include MAKERES_ABSPATH . 'inc/reservations/reservations-endpoints.php';
+include MAKERES_ABSPATH . 'inc/reservations/reservation-endpoints.php';

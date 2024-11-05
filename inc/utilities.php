@@ -1,5 +1,18 @@
 <?php
-
+function make_get_user_meta($user_id) {
+    $user = get_user_by('ID', $user_id);
+    if(!$user) {
+        return new WP_Error('user_error', 'User not found.');
+    }
+    $return['name'] =       (get_field('display_name', 'user_' . $user_id ) ? get_field('display_name', 'user_' . $user_id ) : $user->display_name);
+    $return['badges'] =     get_field('certifications', 'user_' . $user_id );
+    $return['title'] =      get_field('title', 'user_' . $user_id);
+    $return['bio'] =        get_field('bio', 'user_' . $user_id);
+    $return['gallery'] =    get_field('image_gallery', 'user_' . $user_id);
+    $return['photo'] =      get_field('photo', 'user_' . $user_id);
+    $return['link'] =       get_author_posts_url($user_id);
+    return $return;
+}
 
 
 function make_get_user_bookings($userID) {
@@ -52,7 +65,29 @@ function make_get_user_bookings($userID) {
 
 }
 
-add_action('plugin_loaded', function() {
-    mapi_write_log('Plugin loaded');
-    mapi_write_log(make_get_user_bookings(cet_curent_user_id()));
-});
+
+function make_get_user_memberships($user_id) {
+    if(function_exists('wc_memberships_get_user_active_memberships')) :
+        $active_memberships = wc_memberships_get_user_active_memberships($user_id);
+        $memberships = array();
+        if($active_memberships) :
+            foreach($active_memberships as $membership) :
+                mapi_write_log($membership);
+                $memberships[] = $membership;
+            endforeach;
+        endif;
+        return $memberships;  
+    endif;
+
+}
+
+function make_get_user_billing_address($user_id) {
+    $address = [];
+    $address['fname'] = get_user_meta( $user_id, 'first_name', true );
+    $address['lname'] = get_user_meta( $user_id, 'last_name', true );
+    $address['address_1'] = get_user_meta( $user_id, 'billing_address_1', true ); 
+    $address['address_2'] = get_user_meta( $user_id, 'billing_address_2', true );
+    $address['city'] = get_user_meta( $user_id, 'billing_city', true );
+    $address['postcode'] = get_user_meta( $user_id, 'billing_postcode', true );
+    return $address;
+}
