@@ -2,7 +2,6 @@
 
 
 add_action( 'rest_api_init',function () {
-  mapi_write_log('API loaded');
 
     register_rest_route('makesantafe/v1', '/login', [
       'methods' => WP_REST_Server::READABLE,
@@ -39,7 +38,7 @@ add_action( 'rest_api_init',function () {
       )
     ]);
     register_rest_route('makesantafe/v1', '/create_reservation', [
-      'methods' => WP_REST_Server::EDITABLE,
+      'methods' => WP_REST_Server::ALLMETHODS,
       'callback' => 'makesantafe_create_reservation',
       'permission_callback' => '__return_true',
       'args' => array(
@@ -47,13 +46,16 @@ add_action( 'rest_api_init',function () {
           'description' => esc_html__( 'The ID of the bookable product', 'mindshare' ),
           'type'        => 'Int',
           'required'    => true,
+          'validate_callback' =>     function( $param, $request, $key ) {
+            return is_numeric( $param );
+          },
         ),
-        'start_date_time' => array(
+        'start_date' => array(
           'description' => esc_html__( 'The specific start time for the reservation in Y-m-d H:i format', 'mindshare' ),
           'type'        => 'String',
           'required'    => true,
         ),
-        'end_date_time' => array(
+        'end_date' => array(
           'description' => esc_html__( 'The specific end time for the reservation in Y-m-d H:i format', 'mindshare' ),
           'type'        => 'String',
           'required'    => true,
@@ -256,14 +258,28 @@ function makesantafe_update_profile($request) {
 
 
 function makesantafe_create_reservation($request) {
+
   $params = $request->get_params();
   if(CLIENT_ID === $params['CLIENT_ID']) :
     $return = null;
     $user_key = $params['user_key'];
-    $product = $params['product'];
-    $start_date_time = $params['start_date_time'];
-    $end_date_time = $params['end_date_time'];
-    // mapi_write_log($options);
+    $product = (get_post($params['product'] ? $params['product'] : false));
+    $start_date = $params['start_date'];
+    $end_date = $params['end_date'];
+
+    //error checking
+    if(!$product) {
+      wp_send_json_error( 'The product cannot be found!' );
+    }
+    if(!$product || !$start_date || !$end_date) {
+      wp_send_json_error( 'product, start_date and end_date are required!' );
+    }
+    $product = wc_get_product($product);
+    if (!$product->is_type('booking')) {
+        return new WP_Error('invalid_product', 'Product is not a bookable product');
+    }
+
+
     $users = get_users(array(
       'meta_key' => 'user_key',
       'meta_value' => $user_key,
@@ -271,20 +287,37 @@ function makesantafe_create_reservation($request) {
     ));
     if(count($users) > 0) :
       if($users[0] && $user_key) :
-        $booking_data = [
-          'product_id'   => $product,
-          'start_date'   => strtotime($start_date_time),
-          'end_date'     => strtotime($end_date_time),
-          'customer_id'  => $users[0],
-          'status'       => 'confirmed',
-        ];
-      
-        $booking_id = wc_bookings_create_booking($booking_data);
-        $return = array(
-          'success' => true,
-          'message' => 'Booking created.',
-          'booking_id' => $booking_id
-        );
+        $resources = make_get_resources_for_bookable_product($product);
+        mapi_write_log($resources);
+
+        //if there are multiple resources we need to return them to the user to select one
+
+
+        //of there is one resource we can create the booking
+        if(count($resources) === 1) :
+          $new_booking_data = array(
+            'user_id'     => $users[0]->data->ID,
+            'product_id'  => $product,
+            'start_date'  => strtotime( $start_date ), // same time, 1 week on
+            'end_date'    => strtotime( $end_date ),   // same time, 1 week on
+            'resource_id' => $resources[0]['id'],
+          );
+          $booking = create_wc_booking( $product, $new_booking_data, 'confirmed');
+          mapi_write_log($booking);
+          if($booking) :
+            $return = array(
+              'success' => true,
+              'message' => 'Booking created.',
+              'booking_id' => $booking
+            );
+          else :
+              $return = array(
+                'success' => false,
+                'message' => 'the function create_wc_booking faild, Booking could not be created.'
+              );
+          endif;
+        endif;  
+        
       else :
         $return = array(
           'success' => false,

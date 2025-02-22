@@ -91,3 +91,27 @@ function make_get_user_billing_address($user_id) {
     $address['postcode'] = get_user_meta( $user_id, 'billing_postcode', true );
     return $address;
 }
+
+
+function make_get_resources_for_bookable_product($product_id) {
+    // Load the product and ensure it’s a bookable product
+    $product = wc_get_product($product_id);
+
+    if (!$product || !$product->is_type('booking')) {
+        return new WP_Error('invalid_product', 'Product is not a bookable product');
+    }
+
+    // Get the resources
+    $resources = $product->get_resources();
+    mapi_write_log($resources);
+    // Format the resources array for easier use
+    $resources_list = [];
+    foreach ($resources as $resource) {
+        $resources_list[] = [
+            'id'   => $resource->get_id(),
+            'name' => $resource->get_name(),
+        ];
+    }
+
+    return $resources_list;
+}
