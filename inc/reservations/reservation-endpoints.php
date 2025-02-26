@@ -210,7 +210,7 @@ function makesantafe_update_profile($request) {
     $return = null;
     $user_key = $params['user_key'];
     $options = $params['options'];
-    // mapi_write_log($options);
+
     $users = get_users(array(
       'meta_key' => 'user_key',
       'meta_value' => $user_key,
@@ -288,10 +288,6 @@ function makesantafe_create_reservation($request) {
     if(count($users) > 0) :
       if($users[0] && $user_key) :
         $resources = make_get_resources_for_bookable_product($product);
-        mapi_write_log($resources);
-
-        //if there are multiple resources we need to return them to the user to select one
-
 
         //of there is one resource we can create the booking
         if(count($resources) === 1) :
@@ -303,7 +299,6 @@ function makesantafe_create_reservation($request) {
             'resource_id' => $resources[0]['id'],
           );
           $booking = create_wc_booking( $product, $new_booking_data, 'confirmed');
-          mapi_write_log($booking);
           if($booking) :
             $return = array(
               'success' => true,

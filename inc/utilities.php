@@ -72,7 +72,6 @@ function make_get_user_memberships($user_id) {
         $memberships = array();
         if($active_memberships) :
             foreach($active_memberships as $membership) :
-                mapi_write_log($membership);
                 $memberships[] = $membership;
             endforeach;
         endif;
@@ -103,7 +102,6 @@ function make_get_resources_for_bookable_product($product_id) {
 
     // Get the resources
     $resources = $product->get_resources();
-    mapi_write_log($resources);
     // Format the resources array for easier use
     $resources_list = [];
     foreach ($resources as $resource) {
