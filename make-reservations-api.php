@@ -25,7 +25,7 @@
 
 
       $reservations_options = get_option( 'make_reservation_option' );
-      $this->define( 'CLIENT_ID', $reservations_options['client_id'] );
+      $this->define( 'CLIENT_ID', (isset($reservations_options['client_id']) ? $reservations_options['client_id'] : null) );
 
       
       $this->includes();
